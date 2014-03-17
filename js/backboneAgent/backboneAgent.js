@@ -13,7 +13,7 @@ window.__backboneAgent = new (function() {
     }
 
     // @private
-    // Imposta il this nella funzione func pari all'oggetto scope.
+    // Set this in the function func equal to the object scope.
     var bind = function(func, scope) {
         return function() {
             return func.apply(scope, arguments);
@@ -21,7 +21,7 @@ window.__backboneAgent = new (function() {
     };
 
     // @private
-    // Nota: null non è considerato un oggetto.
+    // Note: null is not considered an object.
     var isObject = function(target) {
         return typeof target == "object" && target !== null;
     };
@@ -32,8 +32,8 @@ window.__backboneAgent = new (function() {
     };
 
     // @private
-    // Restituisce un clone dell'oggetto passato.
-    // N.B: le sottoproprietà non saranno clonate (shallow clone).
+    // Returns a clone of the past.
+    // NB: the subproperties not be cloned (shallow clone).
     var clone = function(object) {
         if (!isObject(object)) return object;
         if (isArray(object)) return object.slice();
@@ -48,9 +48,9 @@ window.__backboneAgent = new (function() {
     // @private
     var watchOnce = function(object, property, callback) {
         watch(object, property, function onceHandler(prop, action, newValue, oldValue) {
-            // facendo l'unwatch prima di chiamare la callback (invece di farlo dopo),
-            // è possibile in quest'ultima impostare la proprietà property 
-            // senza incorrere in un loop infinito.
+            // Unwatch doing before calling the callback (instead of doing it later)
+            // You can set the property in the latter
+            // Without running into an infinite loop.
             unwatch(object, property, onceHandler);
 
             callback(prop, action, newValue, oldValue);
