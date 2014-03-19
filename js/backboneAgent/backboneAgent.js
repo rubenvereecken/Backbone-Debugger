@@ -20,13 +20,18 @@
       this.registerAppComponent = __bind(this.registerAppComponent, this);
       this.setAppComponentInfo = __bind(this.setAppComponentInfo, this);
       this.patchBackboneComponent = __bind(this.patchBackboneComponent, this);
-      debug.log("Backbone agent is starting...");
+      this.setHiddenProperty = __bind(this.setHiddenProperty, this);
+      this.getHiddenProperty = __bind(this.getHiddenProperty, this);
+      this.patchFunctionLater = __bind(this.patchFunctionLater, this);
+      this.patchFunction = __bind(this.patchFunction, this);
+      this.clone = __bind(this.clone, this);
+      console.debug("Backbone agent is starting...");
       this.onBackboneDetected(function(Backbone) {
-        debug.log("Backbone detected: ", Backbone);
-        this.onceDefined(Backbone, "View", patchBackboneView);
-        this.onceDefined(Backbone, "Model", patchBackboneModel);
-        this.onceDefined(Backbone, "Collection", patchBackboneCollection);
-        return this.onceDefined(Backbone, "Router", patchBackboneRouter);
+        console.debug("Backbone detected: ", Backbone);
+        this.onceDefined(Backbone, "View", this.patchBackboneView);
+        this.onceDefined(Backbone, "Model", this.patchBackboneModel);
+        this.onceDefined(Backbone, "Collection", this.patchBackboneCollection);
+        return this.onceDefined(Backbone, "Router", this.patchBackboneRouter);
       });
     }
 
@@ -50,7 +55,7 @@
 
     BackboneAgent.prototype.clone = function(object) {
       var newObject, prop;
-      if (!isObject(object)) {
+      if (!this.isObject(object)) {
         return object;
       }
       if (isArray(object)) {
@@ -108,7 +113,7 @@
 
     BackboneAgent.prototype.onceDefined = function(object, property, callback) {
       var handler;
-      if (object[property] !== undefined) {
+      if (object[property] == null) {
         callback(object[property]);
       }
       return watch(object, property, handler = function(prop, action, newValue, oldValue) {
@@ -134,12 +139,14 @@
     };
 
     BackboneAgent.prototype.patchFunctionLater = function(object, functionName, patcher) {
-      if (object[functionName] === undefined) {
-        this.onceDefined(object, functionName, function() {
-          this.patchFunction(object, functionName, patcher);
-        });
+      if (object[functionName] == null) {
+        return this.onceDefined(object, functionName, (function(_this) {
+          return function() {
+            return _this.patchFunction(object, functionName, patcher);
+          };
+        })(this));
       } else {
-        patchFunction(object, functionName, patcher);
+        return this.patchFunction(object, functionName, patcher);
       }
     };
 
@@ -232,49 +239,51 @@
     hiddenPropertyPrefix = "__backboneDebugger__";
 
     BackboneAgent.prototype.getHiddenProperty = function(object, property) {
-      if (!isObject(object)) {
+      if (!this.isObject(object)) {
         return;
       }
-      return object[hiddenPropertyPrefix + property];
+      return object[this.hiddenPropertyPrefix + property];
     };
 
     BackboneAgent.prototype.setHiddenProperty = function(object, property, value) {
-      if (!isObject(object)) {
+      if (!this.isObject(object)) {
         return;
       }
-      object[hiddenPropertyPrefix + property] = value;
+      object[this.hiddenPropertyPrefix + property] = value;
     };
 
     BackboneAgent.prototype.patchBackboneComponent = function(BackboneComponent, instancePatcher) {
-      return this.onceDefined(BackboneComponent, "extend", function() {
-        var patchInitialize;
-        patchInitialize = function(originalInitialize) {
-          return function() {
-            var isInstancePatched;
-            isInstancePatched = this.getHiddenProperty(this, "isInstancePatched");
-            if (!isInstancePatched) {
-              instancePatcher(this);
-              this.setHiddenProperty(this, "isInstancePatched", true);
-            }
-            if (typeof originalInitialize === "function") {
-              return originalInitialize.apply(this, arguments);
-            }
+      return this.onceDefined(BackboneComponent, "extend", (function(_this) {
+        return function() {
+          var patchInitialize;
+          patchInitialize = function(originalInitialize) {
+            return function() {
+              var isInstancePatched;
+              isInstancePatched = _this.getHiddenProperty(_this, "isInstancePatched");
+              if (!isInstancePatched) {
+                instancePatcher(_this);
+                _this.setHiddenProperty(_this, "isInstancePatched", true);
+              }
+              if (typeof originalInitialize === "function") {
+                return originalInitialize.apply(_this, arguments);
+              }
+            };
           };
+          _this.setHiddenProperty(BackboneComponent.prototype, "patchedInitialize", patchInitialize(BackboneComponent.prototype.initialize));
+          return Object.defineProperty(BackboneComponent.prototype, "initialize", {
+            configurable: true,
+            enumerable: true,
+            get: function() {
+              var patchedInitialize;
+              patchedInitialize = _this.getHiddenProperty(_this, "patchedInitialize");
+              return patchedInitialize;
+            },
+            set: function(newInitialize) {
+              return _this.setHiddenProperty(_this, "patchedInitialize", _this.patchInitialize(newInitialize));
+            }
+          });
         };
-        this.setHiddenProperty(BackboneComponent.prototype, "patchedInitialize", patchInitialize(BackboneComponent.prototype.initialize));
-        return Object.defineProperty(BackboneComponent.prototype, "initialize", {
-          configurable: true,
-          enumerable: true,
-          get: function() {
-            var patchedInitialize;
-            patchedInitialize = getHiddenProperty(this, "patchedInitialize");
-            return patchedInitialize;
-          },
-          set: function(newInitialize) {
-            return this.setHiddenProperty(this, "patchedInitialize", this.patchInitialize(newInitialize));
-          }
-        });
-      });
+      })(this));
     };
 
     BackboneAgent.prototype.setAppComponentInfo = function(appComponent, appComponentInfo) {
@@ -302,7 +311,7 @@
       this.sendAppComponentReport(appComponentCategory + ":new", {
         componentIndex: appComponentIndex
       });
-      debug.log("New " + appComponentCategory, appComponent);
+      console.debug("New " + appComponentCategory, appComponent);
       return appComponentIndex;
     };
 
@@ -317,24 +326,26 @@
           });
         };
       })(this);
-      monitorFragmen = function(object, propertyFragments, index) {
-        var currentProperty, currentRecursionLevel, onFragmentChange;
-        currentProperty = propertyFragments[index];
-        currentRecursionLevel = (index === propertyFragments.length - 1 ? recursionLevel : 0);
-        onFragmentChange = function() {
-          if (index === propertyFragments.length - 1) {
-            propertyChanged();
-          } else {
-            if (isObject(object[currentProperty])) {
-              monitorFragment(object[currentProperty], propertyFragments, index + 1);
+      monitorFragmen = (function(_this) {
+        return function(object, propertyFragments, index) {
+          var currentProperty, currentRecursionLevel, onFragmentChange;
+          currentProperty = propertyFragments[index];
+          currentRecursionLevel = (index === propertyFragments.length - 1 ? recursionLevel : 0);
+          onFragmentChange = function() {
+            if (index === propertyFragments.length - 1) {
+              propertyChanged();
+            } else {
+              if (_this.isObject(object[currentProperty])) {
+                monitorFragment(object[currentProperty], propertyFragments, index + 1);
+              }
             }
+          };
+          if (object[currentProperty] !== undefined) {
+            onFragmentChange();
           }
+          onSettedDeep(object, currentProperty, onFragmentChange, recursionLevel);
         };
-        if (object[currentProperty] !== undefined) {
-          onFragmentChange();
-        }
-        onSettedDeep(object, currentProperty, onFragmentChange, recursionLevel);
-      };
+      })(this);
       return monitorFragment(appComponent, property.split("."), 0);
     };
 
@@ -350,64 +361,68 @@
     };
 
     BackboneAgent.prototype.patchAppComponentTrigger = function(appComponent) {
-      return patchFunctionLater(appComponent, "trigger", function(originalFunction) {
-        return function() {
-          var data, dataKind, eventArguments, eventName, result;
-          result = originalFunction.apply(this, arguments);
-          eventName = arguments[0];
-          eventArguments = undefined;
-          if (arguments.length > 1) {
-            eventArguments = Array.prototype.slice.call(arguments, 1);
-          }
-          data = eventArguments;
-          dataKind = (data === undefined ? undefined : "event arguments");
-          this.addAppComponentAction(this, new AppComponentAction("Trigger", eventName, data, dataKind));
-          return result;
+      return patchFunctionLater(appComponent, "trigger", (function(_this) {
+        return function(originalFunction) {
+          return function() {
+            var data, dataKind, eventArguments, eventName, result;
+            result = originalFunction.apply(_this, arguments);
+            eventName = arguments[0];
+            eventArguments = undefined;
+            if (arguments.length > 1) {
+              eventArguments = Array.prototype.slice.call(arguments, 1);
+            }
+            data = eventArguments;
+            dataKind = (data === undefined ? undefined : "event arguments");
+            _this.addAppComponentAction(_this, new AppComponentAction("Trigger", eventName, data, dataKind));
+            return result;
+          };
         };
-      });
+      })(this));
     };
 
     BackboneAgent.prototype.patchAppComponentEvents = function(appComponent) {};
 
     BackboneAgent.prototype.patchAppComponentSync = function(appComponent) {
-      return this.patchFunctionLater(appComponent, "sync", function(originalFunction) {
-        return function() {
-          var argumentsArray, method, result, syncCompleted;
-          method = arguments[0];
-          syncCompleted = function(isSuccess) {
-            var actionName, syncStatus;
-            syncStatus = (isSuccess ? "success" : "failure");
-            actionName = method + " (" + syncStatus + ")";
-            addAppComponentAction(appComponent, new AppComponentAction("Sync", actionName));
+      return this.patchFunctionLater(appComponent, "sync", (function(_this) {
+        return function(originalFunction) {
+          return function() {
+            var argumentsArray, method, result, syncCompleted;
+            method = arguments[0];
+            syncCompleted = function(isSuccess) {
+              var actionName, syncStatus;
+              syncStatus = (isSuccess ? "success" : "failure");
+              actionName = method + " (" + syncStatus + ")";
+              addAppComponentAction(appComponent, new AppComponentAction("Sync", actionName));
+            };
+            argumentsArray = Array.prototype.slice.call(arguments);
+            if (argumentsArray[2] === undefined) {
+              argumentsArray[2] = {};
+            }
+            _this.patchFunction(argumentsArray[2], "success", function(originalFunction) {
+              return function() {
+                syncCompleted(true);
+                if (originalFunction) {
+                  return originalFunction.apply(_this, arguments);
+                }
+              };
+            });
+            _this.patchFunction(argumentsArray[2], "failure", function(originalFunction) {
+              return function() {
+                syncCompleted(false);
+                if (originalFunction) {
+                  return originalFunction.apply(_this, arguments);
+                }
+              };
+            });
+            result = originalFunction.apply(_this, argumentsArray);
+            return result;
           };
-          argumentsArray = Array.prototype.slice.call(arguments);
-          if (argumentsArray[2] === undefined) {
-            argumentsArray[2] = {};
-          }
-          this.patchFunction(argumentsArray[2], "success", function(originalFunction) {
-            return function() {
-              syncCompleted(true);
-              if (originalFunction) {
-                return originalFunction.apply(this, arguments);
-              }
-            };
-          });
-          patchFunction(argumentsArray[2], "failure", function(originalFunction) {
-            return function() {
-              syncCompleted(false);
-              if (originalFunction) {
-                return originalFunction.apply(this, arguments);
-              }
-            };
-          });
-          result = originalFunction.apply(this, argumentsArray);
-          return result;
         };
-      });
+      })(this));
     };
 
     BackboneAgent.prototype.patchBackboneView = function(BackboneView) {
-      debug.log("Backbone.View detected");
+      console.debug("Backbone.View detected");
       return this.patchBackboneComponent(BackboneView, (function(_this) {
         return function(view) {
           var viewIndex;
@@ -424,14 +439,14 @@
               var argumentsArray, callback, eventType, events, result;
               events = arguments[0];
               if (events === undefined) {
-                events = (typeof this.events === "function" ? this.events() : this.events);
+                events = (typeof _this.events === "function" ? _this.events() : _this.events);
               }
-              events = clone(events);
+              events = _this.clone(events);
               for (eventType in events) {
                 if (events.hasOwnProperty(eventType)) {
                   callback = events[eventType];
                   if (typeof callback !== "function") {
-                    callback = this[callback];
+                    callback = _this[callback];
                   }
                   if (!callback) {
                     continue;
@@ -439,8 +454,8 @@
                   events[eventType] = (function(eventType, callback) {
                     return function(event) {
                       var result;
-                      this.addAppComponentAction(view, new AppComponentAction("Page event handling", eventType, event, "jQuery Event"));
-                      result = callback.apply(this, arguments);
+                      _this.addAppComponentAction(view, new AppComponentAction("Page event handling", eventType, event, "jQuery Event"));
+                      result = callback.apply(_this, arguments);
                       return result;
                     };
                   })(eventType, callback);
@@ -448,23 +463,23 @@
               }
               argumentsArray = Array.prototype.slice.call(arguments);
               argumentsArray[0] = events;
-              result = originalFunction.apply(this, argumentsArray);
+              result = originalFunction.apply(_this, argumentsArray);
               return result;
             };
           });
           patchFunctionLater(view, "render", function(originalFunction) {
             return function() {
               var result;
-              result = originalFunction.apply(this, arguments);
-              this.addAppComponentAction(this, new AppComponentAction("Operation", "render"));
+              result = originalFunction.apply(_this, arguments);
+              _this.addAppComponentAction(_this, new AppComponentAction("Operation", "render"));
               return result;
             };
           });
           return patchFunctionLater(view, "remove", function(originalFunction) {
             return function() {
               var result;
-              result = originalFunction.apply(this, arguments);
-              this.addAppComponentAction(this, new AppComponentAction("Operation", "remove"));
+              result = originalFunction.apply(_this, arguments);
+              _this.addAppComponentAction(_this, new AppComponentAction("Operation", "remove"));
               return result;
             };
           });
@@ -473,7 +488,7 @@
     };
 
     BackboneAgent.prototype.patchBackboneModel = function(BackboneModel) {
-      debug.log("Backbone.Model detected");
+      console.debug("Backbone.Model detected");
       return this.patchBackboneComponent(BackboneModel, (function(_this) {
         return function(model) {
           var modelIndex;
@@ -491,7 +506,7 @@
     };
 
     BackboneAgent.prototype.patchBackboneCollection = function(BackboneCollection) {
-      debug.log("Backbone.Collection detected");
+      console.debug("Backbone.Collection detected");
       return this.patchBackboneComponent(BackboneCollection, (function(_this) {
         return function(collection) {
           var collectionIndex;
@@ -507,7 +522,7 @@
     };
 
     BackboneAgent.prototype.patchBackboneRouter = function(BackboneRouter) {
-      debug.log("Backbone.Router detected");
+      console.debug("Backbone.Router detected");
       return this.patchBackboneComponent(BackboneRouter, (function(_this) {
         return function(router) {
           var routerIndex;
@@ -520,41 +535,45 @@
 
     BackboneAgent.prototype.onBackboneDetected = function(callback) {
       var handleBackbone;
-      handleBackbone = function(Backbone) {
-        if (getHiddenProperty(Backbone, "isDetected")) {
-          return;
-        }
-        this.setHiddenProperty(Backbone, "isDetected", true);
-        return callback(Backbone);
-      };
-      this.onSetted(window, "Backbone", handleBackbone);
-      return this.patchFunctionLater(window, "define", function(originalFunction) {
-        return function() {
-          var argumentsArray, i, l;
-          argumentsArray = Array.prototype.slice.call(arguments);
-          i = 0;
-          l = argumentsArray.length;
-          while (i < l) {
-            if (typeof argumentsArray[i] === "function") {
-              this.patchFunction(argumentsArray, i, function(originalFunction) {
-                return function(require, exports, modules) {
-                  var BackboneCandidate, isBackbone, module;
-                  module = originalFunction.apply(this, arguments);
-                  BackboneCandidate = module || this;
-                  isBackbone = isObject(BackboneCandidate) && typeof BackboneCandidate.View === "function" && typeof BackboneCandidate.Model === "function" && typeof BackboneCandidate.Collection === "function" && typeof BackboneCandidate.Router === "function";
-                  if (isBackbone) {
-                    this.handleBackbone(BackboneCandidate);
-                  }
-                  return module;
-                };
-              });
-              break;
-            }
-            i++;
+      handleBackbone = (function(_this) {
+        return function(Backbone) {
+          if (_this.getHiddenProperty(Backbone, "isDetected")) {
+            return;
           }
-          return originalFunction.apply(this, argumentsArray);
+          _this.setHiddenProperty(Backbone, "isDetected", true);
+          return callback(Backbone);
         };
-      });
+      })(this);
+      this.onSetted(window, "Backbone", handleBackbone);
+      return this.patchFunctionLater(window, "define", (function(_this) {
+        return function(originalFunction) {
+          return function() {
+            var argumentsArray, i, l;
+            argumentsArray = Array.prototype.slice.call(arguments);
+            i = 0;
+            l = argumentsArray.length;
+            while (i < l) {
+              if (typeof argumentsArray[i] === "function") {
+                _this.patchFunction(argumentsArray, i, function(originalFunction) {
+                  return function(require, exports, modules) {
+                    var BackboneCandidate, isBackbone, module;
+                    module = originalFunction.apply(_this, arguments);
+                    BackboneCandidate = module || _this;
+                    isBackbone = _this.isObject(BackboneCandidate) && typeof BackboneCandidate.View === "function" && typeof BackboneCandidate.Model === "function" && typeof BackboneCandidate.Collection === "function" && typeof BackboneCandidate.Router === "function";
+                    if (isBackbone) {
+                      _this.handleBackbone(BackboneCandidate);
+                    }
+                    return module;
+                  };
+                });
+                break;
+              }
+              i++;
+            }
+            return originalFunction.apply(_this, argumentsArray);
+          };
+        };
+      })(this));
     };
 
     return BackboneAgent;

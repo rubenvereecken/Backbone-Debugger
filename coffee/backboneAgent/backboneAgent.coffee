@@ -3,15 +3,15 @@ class BackboneAgent
   # @public
   # Metodo eseguito automaticamente all'atto della creazione dell'oggetto.
   constructor: ->
-    debug.log "Backbone agent is starting..."
+    console.debug "Backbone agent is starting..."
     @onBackboneDetected (Backbone) ->
-      debug.log "Backbone detected: ", Backbone
+      console.debug "Backbone detected: ", Backbone
 
       # note: the Backbone object might be only partially defined.
-      @onceDefined Backbone, "View", patchBackboneView
-      @onceDefined Backbone, "Model", patchBackboneModel
-      @onceDefined Backbone, "Collection", patchBackboneCollection
-      @onceDefined Backbone, "Router", patchBackboneRouter
+      @onceDefined Backbone, "View", @patchBackboneView
+      @onceDefined Backbone, "Model", @patchBackboneModel
+      @onceDefined Backbone, "Collection", @patchBackboneCollection
+      @onceDefined Backbone, "Router", @patchBackboneRouter
 
 
   # UTILITY METHODS
@@ -39,8 +39,8 @@ class BackboneAgent
   # @private
   # Returns a clone of the past.
   # NB: the sub properties will not be cloned (shallow clone).
-  clone: (object) ->
-    return object  unless isObject(object)
+  clone: (object) =>
+    return object  unless @isObject(object)
     return object.slice()  if isArray(object)
     newObject = {}
     newObject[prop] = object[prop] for prop of object
@@ -103,7 +103,7 @@ class BackboneAgent
   # @private
   # Like onDefined, but calls the callback just once.
   onceDefined: (object, property, callback) ->
-    callback object[property]  if object[property] isnt `undefined`
+    callback object[property]  if not object[property]?
     watch object, property, handler = (prop, action, newValue, oldValue) ->
       if newValue isnt `undefined`
         unwatch object, property, handler
@@ -113,7 +113,7 @@ class BackboneAgent
   # @private
   # Sostituisce la funzione functionName di object con quella restituita dalla funzione patcher.
   # La funzione patcher viene chiamata con la funzione originale come argomento.
-  patchFunction: (object, functionName, patcher) ->
+  patchFunction: (object, functionName, patcher) =>
     originalFunction = object[functionName]
     object[functionName] = patcher(originalFunction)
 
@@ -130,15 +130,12 @@ class BackboneAgent
   # @private
   # Come patchFunction, ma aspetta che il metodo sia definito se questo è undefined al momento
   # della chiamata.
-  patchFunctionLater: (object, functionName, patcher) ->
-    if object[functionName] is `undefined`
-      @onceDefined object, functionName, ->
+  patchFunctionLater: (object, functionName, patcher) =>
+    if not object[functionName]?
+      @onceDefined object, functionName, =>
         @patchFunction object, functionName, patcher
-        return
-
     else
-      patchFunction object, functionName, patcher
-    return
+      @patchFunction object, functionName, patcher
 
 
   # @private
@@ -274,19 +271,17 @@ class BackboneAgent
   hiddenPropertyPrefix = "__backboneDebugger__"
 
   # @private
-  getHiddenProperty: (object, property) ->
-    return  unless isObject(object)
-    object[hiddenPropertyPrefix + property]
+  getHiddenProperty: (object, property) =>
+    return  unless @isObject(object)
+    object[@hiddenPropertyPrefix + property]
 
 
   # @private
-  setHiddenProperty: (object, property, value) ->
-    return  unless isObject(object)
-    object[hiddenPropertyPrefix + property] = value
+  setHiddenProperty: (object, property, value) =>
+    return  unless @isObject(object)
+    object[@hiddenPropertyPrefix + property] = value
     return
 
-
-  #//
 
   # @private
   # instancePatcher è una funzione che viene chiamata ad ogni istanziazione del componente Backbone
@@ -294,20 +289,19 @@ class BackboneAgent
   # I componenti Backbone validi sono Backbone.View, Backbone.Model, Backbone.Collection e Backbone.Router
   # N.B: suppone che il componente backbone sia stato settato solo inizialmente.
   patchBackboneComponent: (BackboneComponent, instancePatcher) =>
-    @onceDefined BackboneComponent, "extend", ->
+    @onceDefined BackboneComponent, "extend", =>
 
       # (l'extend è l'ultimo metodo impostato, quindi ora il componente è pronto)
 
       # Patcha la initialize del componente (e dei suoi sottotipi) per intercettare
       # le istanze create, il meccanismo quindi funziona se i sottotipi non definiscono
       # costruttori custom che non chiamano la initialize.
-      patchInitialize = (originalInitialize) ->
-        ->
-
+      patchInitialize = (originalInitialize) =>
+        =>
           # Patcha l'istanza se non è già stato fatto
           # (se ad es. l'istanza chiama l'initialize definita nel padre, evita
           # di patcharla due volte)
-          isInstancePatched = @getHiddenProperty(this, "isInstancePatched")
+          isInstancePatched = @getHiddenProperty(@, "isInstancePatched")
           unless isInstancePatched
             instancePatcher @
             @setHiddenProperty @, "isInstancePatched", true
@@ -325,12 +319,12 @@ class BackboneAgent
       Object.defineProperty BackboneComponent::, "initialize",
         configurable: true
         enumerable: true
-        get: ->
-          patchedInitialize = getHiddenProperty(this, "patchedInitialize")
+        get: =>
+          patchedInitialize = @getHiddenProperty(@, "patchedInitialize")
           patchedInitialize
 
-        set: (newInitialize) ->
-          @setHiddenProperty this, "patchedInitialize", @patchInitialize(newInitialize)
+        set: (newInitialize) =>
+          @setHiddenProperty @, "patchedInitialize", @patchInitialize(newInitialize)
 
 
   # @private
@@ -354,7 +348,6 @@ class BackboneAgent
   # Note: name is prefixed by "backboneAgent:" and can't contain spaces
   #       (because it's transformed in a Backbone event in the Panel)
   sendAppComponentReport: (name, report) ->
-
     # the timestamp is tipicaly used by the panel to exclude old reports
     report.timestamp = new Date().getTime()
     return
@@ -380,7 +373,7 @@ class BackboneAgent
     @sendAppComponentReport appComponentCategory + ":new",
       componentIndex: appComponentIndex
 
-    debug.log "New " + appComponentCategory, appComponent
+    console.debug "New " + appComponentCategory, appComponent
     appComponentIndex
 
 
@@ -405,12 +398,12 @@ class BackboneAgent
         componentProperty: property
 
 
-      #debug.log("Property " + property + " of a " + appComponentInfo.category + " has changed: ", appComponent[property]);
+      #console.debug("Property " + property + " of a " + appComponentInfo.category + " has changed: ", appComponent[property]);
 
-    monitorFragmen = (object, propertyFragments, index) ->
+    monitorFragmen = (object, propertyFragments, index) =>
       currentProperty = propertyFragments[index]
       currentRecursionLevel = (if (index is propertyFragments.length - 1) then recursionLevel else 0) # used only in last fragment
-      onFragmentChange = ->
+      onFragmentChange = =>
 
         # TODO: remove old sub setters (if any)
         if index is propertyFragments.length - 1
@@ -419,7 +412,7 @@ class BackboneAgent
           propertyChanged()
 
           # monitor the next fragment
-        else monitorFragment object[currentProperty], propertyFragments, index + 1  if isObject(object[currentProperty])
+        else monitorFragment object[currentProperty], propertyFragments, index + 1  if @isObject(object[currentProperty])
         return
 
       onFragmentChange()  if object[currentProperty] isnt `undefined`
@@ -440,16 +433,16 @@ class BackboneAgent
     @sendAppComponentReport appComponentInfo.category + ":" + appComponentInfo.index + ":action",
       componentActionIndex: actionIndex
 
-    #debug.log("New action: ", appComponentAction);
+    #console.debug("New action: ", appComponentAction);
     actionIndex
 
 
   # @private
   # Patcha il metodo trigger del componente dell'app.
   patchAppComponentTrigger: (appComponent) =>
-    patchFunctionLater appComponent, "trigger", (originalFunction) ->
-      ->
-        result = originalFunction.apply(this, arguments)
+    patchFunctionLater appComponent, "trigger", (originalFunction) =>
+      =>
+        result = originalFunction.apply(@, arguments)
 
         # function signature: trigger(eventName, arg1, arg2, ...)
         eventName = arguments[0]
@@ -461,7 +454,7 @@ class BackboneAgent
         # save data only if there is
         data = eventArguments
         dataKind = (if (data is `undefined`) then `undefined` else "event arguments")
-        @addAppComponentAction this, new AppComponentAction("Trigger", eventName, data, dataKind)
+        @addAppComponentAction @, new AppComponentAction("Trigger", eventName, data, dataKind)
         result
 
 
@@ -474,8 +467,8 @@ class BackboneAgent
   # @private
   # Patcha il metodo sync del componente dell'app (presente in modelli e collezioni).
   patchAppComponentSync: (appComponent) =>
-    @patchFunctionLater appComponent, "sync", (originalFunction) ->
-      ->
+    @patchFunctionLater appComponent, "sync", (originalFunction) =>
+      =>
         method = arguments[0] # es. "create", "read", etc.
         syncCompleted = (isSuccess) ->
           syncStatus = (if isSuccess then "success" else "failure")
@@ -489,25 +482,25 @@ class BackboneAgent
         argumentsArray = Array::slice.call(arguments)
         # il parametro è opzionale
         argumentsArray[2] = {}  if argumentsArray[2] is `undefined`
-        @patchFunction argumentsArray[2], "success", (originalFunction) ->
-          ->
+        @patchFunction argumentsArray[2], "success", (originalFunction) =>
+          =>
             syncCompleted true
             # la proprietà è opzionale
-            originalFunction.apply this, arguments  if originalFunction
+            originalFunction.apply @, arguments  if originalFunction
 
-        patchFunction argumentsArray[2], "failure", (originalFunction) ->
-          ->
+        @patchFunction argumentsArray[2], "failure", (originalFunction) =>
+          =>
             syncCompleted false
             # la proprietà è opzionale
-            originalFunction.apply this, arguments  if originalFunction
+            originalFunction.apply @, arguments  if originalFunction
 
-        result = originalFunction.apply(this, argumentsArray)
+        result = originalFunction.apply(@, argumentsArray)
         result
 
 
   # @private
   patchBackboneView: (BackboneView) =>
-    debug.log "Backbone.View detected"
+    console.debug "Backbone.View detected"
     @patchBackboneComponent BackboneView, (view) => # on new instance
       # registra il nuovo componente dell'app
       viewIndex = @registerAppComponent("View", view)
@@ -522,27 +515,27 @@ class BackboneAgent
       # Patcha i metodi del componente dell'app
       @patchAppComponentTrigger view
       @patchAppComponentEvents view
-      @patchFunctionLater view, "delegateEvents", (originalFunction) ->
-        ->
+      @patchFunctionLater view, "delegateEvents", (originalFunction) =>
+        =>
           events = arguments[0] # hash <selector, callback>
 
-          # delegateEvents usa internamente this.events se viene chiamata senza
+          # delegateEvents usa internamente @.events se viene chiamata senza
           # argomenti, non rendendo possibile la modifica dell'input,
-          # per cui in questo caso anticipiamo il comportamento e usiamo this.events
+          # per cui in questo caso anticipiamo il comportamento e usiamo @.events
           # come input.
-          # (this.events può essere anche una funzione che restituisce l'hash)
+          # (@.events può essere anche una funzione che restituisce l'hash)
           events = (if (typeof @events is "function") then @events() else @events)  if events is `undefined`
 
           # bisogna modificare al volo le callback in events
           # per poter tracciare quando vengono chiamate
-          events = clone(events) # evita di modificare l'oggetto originale
+          events = @clone(events) # evita di modificare l'oggetto originale
           for eventType of events
             if events.hasOwnProperty(eventType)
 
               # la callback può essere direttamente una funzione o il nome di una
               # funzione nella view
               callback = events[eventType]
-              callback = this[callback]  unless typeof callback is "function"
+              callback = @[callback]  unless typeof callback is "function"
 
               # lascia la callback non valida invariata in modo che
               # il metodo originale possa avvisare dell'errore
@@ -550,12 +543,12 @@ class BackboneAgent
 
               # callback valida, la modifica al volo
               # (ogni funzione ha la sua closure con i dati dell'evento)
-              events[eventType] = ((eventType, callback) ->
-                (event) ->
+              events[eventType] = ((eventType, callback) =>
+                (event) =>
 
                   # event è l'evento jquery
                   @addAppComponentAction view, new AppComponentAction("Page event handling", eventType, event, "jQuery Event")
-                  result = callback.apply(this, arguments)
+                  result = callback.apply(@, arguments)
                   result
               )(eventType, callback)
 
@@ -563,25 +556,25 @@ class BackboneAgent
           # nella strict mode)
           argumentsArray = Array::slice.call(arguments)
           argumentsArray[0] = events
-          result = originalFunction.apply(this, argumentsArray)
+          result = originalFunction.apply(@, argumentsArray)
           result
 
-      patchFunctionLater view, "render", (originalFunction) ->
-        ->
-          result = originalFunction.apply(this, arguments)
-          @addAppComponentAction this, new AppComponentAction("Operation", "render")
+      patchFunctionLater view, "render", (originalFunction) =>
+        =>
+          result = originalFunction.apply(@, arguments)
+          @addAppComponentAction @, new AppComponentAction("Operation", "render")
           result
 
-      patchFunctionLater view, "remove", (originalFunction) ->
-        ->
-          result = originalFunction.apply(this, arguments)
-          @addAppComponentAction this, new AppComponentAction("Operation", "remove")
+      patchFunctionLater view, "remove", (originalFunction) =>
+        =>
+          result = originalFunction.apply(@, arguments)
+          @addAppComponentAction @, new AppComponentAction("Operation", "remove")
           result
 
 
   # @private
   patchBackboneModel: (BackboneModel) =>
-    debug.log "Backbone.Model detected"
+    console.debug "Backbone.Model detected"
     @patchBackboneComponent BackboneModel, (model) => # on new instance
       # registra il nuovo componente dell'app
       modelIndex = registerAppComponent("Model", model)
@@ -601,7 +594,7 @@ class BackboneAgent
 
   # @private
   patchBackboneCollection: (BackboneCollection) =>
-    debug.log "Backbone.Collection detected"
+    console.debug "Backbone.Collection detected"
     @patchBackboneComponent BackboneCollection, (collection) => # on new instance
       # registra il nuovo componente dell'app
       collectionIndex = @registerAppComponent("Collection", collection)
@@ -619,7 +612,7 @@ class BackboneAgent
 
   # @private
   patchBackboneRouter: (BackboneRouter) =>
-    debug.log "Backbone.Router detected"
+    console.debug "Backbone.Router detected"
     @patchBackboneComponent BackboneRouter, (router) => # on new instance
       # registra il nuovo componente dell'app
       routerIndex = registerAppComponent("Router", router)
@@ -633,11 +626,11 @@ class BackboneAgent
   # Calls the callback passing to it the Backbone object every time it's detected.
   # The function uses multiple methods of detection.
   onBackboneDetected: (callback) =>
-    handleBackbone = (Backbone) ->
+    handleBackbone = (Backbone) =>
 
       # skip if already detected
       # (needed because the app could define Backbone in multiple ways at once)
-      return  if getHiddenProperty(Backbone, "isDetected")
+      return  if @getHiddenProperty(Backbone, "isDetected")
       @setHiddenProperty Backbone, "isDetected", true
       callback Backbone
 
@@ -646,8 +639,8 @@ class BackboneAgent
     @onSetted window, "Backbone", handleBackbone
 
     # AMD
-    @patchFunctionLater window, "define", (originalFunction) ->
-      ->
+    @patchFunctionLater window, "define", (originalFunction) =>
+      =>
 
         # function arguments: (id? : String, dependencies? : Array, factory : Function)
 
@@ -666,20 +659,20 @@ class BackboneAgent
             # default modules, or in case of a module with no dependencies but
             # that uses the default modules internally, the original define would see a 0-arity
             # function and would call it without them (see define() in the AMD API)
-            @patchFunction argumentsArray, i, (originalFunction) ->
-              (require, exports, modules) ->
-                module = originalFunction.apply(this, arguments)
+            @patchFunction argumentsArray, i, (originalFunction) =>
+              (require, exports, modules) =>
+                module = originalFunction.apply(@, arguments)
 
                 # check if Backbone has been defined by the factory fuction
-                # (some factories set "this" to Backbone)
-                BackboneCandidate = module or this
-                isBackbone = isObject(BackboneCandidate) and typeof BackboneCandidate.View is "function" and typeof BackboneCandidate.Model is "function" and typeof BackboneCandidate.Collection is "function" and typeof BackboneCandidate.Router is "function"
+                # (some factories set "@" to Backbone)
+                BackboneCandidate = module or @
+                isBackbone = @isObject(BackboneCandidate) and typeof BackboneCandidate.View is "function" and typeof BackboneCandidate.Model is "function" and typeof BackboneCandidate.Collection is "function" and typeof BackboneCandidate.Router is "function"
                 @handleBackbone BackboneCandidate  if isBackbone
                 module
 
             break
           i++
-        originalFunction.apply this, argumentsArray
+        originalFunction.apply @, argumentsArray
 
 
 window.__backboneAgent = new BackboneAgent()
